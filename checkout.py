@@ -1,40 +1,34 @@
+from pricing_rules import apply_bogof, apply_bulk_discount
+
 class Checkout:
     def __init__(self, pricing_rules):
         self.basket = {}
         self.pricing_rules = pricing_rules
 
     def scan(self, product_code):
-        if product_code not in self.basket:
-            self.basket[product_code] = 1
-        else:
-            self.basket[product_code] += 1
+        # Use the .get() method's default argument when product isn't in basket.
+        # Alternatively we could use a defaultdict.
+        self.basket[product_code] = self.basket.get(product_code, 0) + 1
 
     def calculate(self):
-        total = 0
-        for product_code, count in self.basket.items():
-            product_total = self.calculate_product_total(product_code, count)
-            total += product_total
+        # You can just combine sum() and a generator to calculate the total directly.
+        total = sum(self.calculate_product_total(code, count) for code, count in self.basket.items())
 
+        # Hope you're not siphoning those shaved-off fractions of a penny into an
+        # account in the Caiman Islands :p
         return round(total/100, 2)
 
     def calculate_product_total(self, product_code, count):
-        product = self.pricing_rules[product_code]
-        if product["rule"] == "BOGOF":
-            return self.apply_bogof(product, count)
-        elif product["rule"] == "Bulk discount":
-            return self.apply_bulk_discount(product, count)
-        else:
-            return count * product["price"]
+        # Assume a default rule of 'none' if there isn't one defined for the product.
+        rule = self.pricing_rules[product_code].get('rule', 'none')
 
-    def apply_bogof(self, product, count):
-        price = product["price"]
-        if count % 2 > 0:
-            return ((count - 1) / 2 * price) + price
-        else:
-            return (count / 2) * price
+        # Take advantage of being able to pass functions/lambdas around like objects
+        # We can also declare a dict and use it straight away!
+        rule_fn = {
+            'BOGOF': apply_bogof,
+            'Bulk discount': apply_bulk_discount,
+            'none': lambda product, count: count * product['price']
+        }[rule]
 
-    def apply_bulk_discount(self, product, count):
-        if count >= product["threshold"]:
-            return (product["price"] * count) - (product["discount"] * count)
-        else:
-            return product["price"] * count
+        return rule_fn(product_code, count)
+
